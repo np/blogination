@@ -29,5 +29,6 @@ getConf filePath = runErrorT $ do
   Blog <$> get "name" <*> get "root"
        <*> (read <$> get "css") <*> get "entries" <*> get "html"
        <*> get "author"
-       <*> (return False)
+       <*> return False
        <*> get "date"
+       <*> return "tags"

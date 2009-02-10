@@ -11,7 +11,7 @@ module Text.Blogination
     ,highlight)
     where
 
-import Control.Arrow
+import Control.Arrow hiding ((+++))
 import Control.Monad.State
 import Control.Monad.Error
 import Data.Char hiding (Space)
@@ -29,6 +29,7 @@ import System.FilePath
 import System.IO.UTF8 (readFile,writeFile)
 import System.Time
 import System.Locale
+import Data.Monoid
 
 data Blog = Blog
     { blogName     :: String -- e.g. Chris Done's Blog
@@ -40,7 +41,8 @@ data Blog = Blog
     , blogForce    :: Bool
     , blogDate     :: String -- date format e.g. 
                              -- "%A %d %b, %Y" makes "Tuesday 10 Feb, 2009"
-    } deriving (Read,Show)
+    , blogTags     :: FilePath
+     } deriving (Read,Show)
 
 type Blogination = ErrorT String (StateT Blog IO)
 
@@ -50,7 +52,37 @@ runBloginator m blog = evalStateT (runErrorT m) blog
 buildBlog :: Blogination ()
 buildBlog = do ensureProperState
                anyChanges <- renderEntries
-               when anyChanges renderIndex
+               when anyChanges $ do renderIndex
+                                    renderTags
+
+renderTags :: Blogination ()
+renderTags = do
+  mapM_ renderTag =<< getTags
+
+renderTag :: String -> Blogination ()
+renderTag tag = do
+  blog@Blog{..} <- lift get
+  links <- mapM getEntryLink =<< getTagEntryNames tag
+  let html = [head,thebody]
+      head = header << [toHtml $ map style blogCSS
+                       ,meta ! [httpequiv "Content-Type"
+                               ,content "text/html; charset=utf-8"]
+                       ,thetitle << title]
+      thebody = body << [back,hr,name,menu,hr,back]
+      title = tag ++ " - " ++ blogName
+      name = h2 << ("Tag: " ++ tag)
+      menu = ulist << map ((li<<) . showLink) links
+      back = toHtml $ p << hotlink blogRoot << ("« Back to " ++ blogName)
+      style css = thelink ! [rel "stylesheet",href (blogRoot++"/"++css)]
+                  << noHtml
+  liftIO $ writeFile (blogTags</>tag++".html") $ showHtml html
+      where showLink (url,title) = hotlink url << title  
+
+getTagEntryNames :: FilePath -> Blogination [FilePath]
+getTagEntryNames path = do
+  blog@Blog{..} <- lift get
+  names <- lines `fmap` liftIO (readFile (blogTags</>path))
+  liftIO $ fmap (reverse . sort) $ filterM (doesFileExist . (blogEntries</>)) names
 
 renderIndex :: Blogination ()
 renderIndex = do
@@ -97,16 +129,28 @@ getModificationTime' path = do
 renderEntry :: FilePath -> Blogination ()
 renderEntry path = do
   blog@Blog{..} <- lift get
+  alltags <- getTags
+  tagEntries <- mapM getTagEntryNames alltags
+  let tags = map fst . filter (any (==path) . snd) $ zip alltags tagEntries
   liftIO $ do
     contents <- readFile (blogEntries</>path)
     writeFile (blogHtml</>path++".html") $ 
-       showHtml $ pageToHtml blog path contents
+       showHtml $ pageToHtml blog path tags contents
+    where match = map fst . filter (any (== path) . snd)
 
 getEntryNames :: Blogination [FilePath]
 getEntryNames = do
   Blog{..} <- lift get
-  return . clean =<< liftIO (getDirectoryContents blogEntries) 
-    where clean = reverse . sort . filter (not . all (=='.'))
+  fileClean `fmap` liftIO (getDirectoryContents blogEntries) 
+
+getTags :: Blogination [FilePath]
+getTags = do 
+  Blog{..} <- lift get
+  (fileClean . filterPlain) `fmap` liftIO (getDirectoryContents blogTags)
+
+filterPlain = filter (all (flip any [isLetter,isSpace,isDigit] . flip ($)))
+
+fileClean = reverse . sort . filter (not . all (=='.'))
 
 ensureProperState :: Blogination ()
 ensureProperState = do
@@ -118,24 +162,29 @@ ensureProperState = do
     return ()
   liftIO $ createDirectoryIfMissing False blogHtml
 
-pageToHtml :: Blog -> FilePath -> String -> Html
-pageToHtml blog fname = 
+pageToHtml :: Blog -> FilePath -> [String] -> String -> Html
+pageToHtml blog fname tags = 
     html . second write . (getTitle &&& highlight) . read where
     read = readMarkdown defaultParserState
     write = writeHtml defaultWriterOptions
-    html = template blog fname
+    html = template blog fname tags
 
-template :: Blog -> FilePath -> (String,Html) -> Html
-template blog@Blog{..} path (title,html) = toHtml [head,thebody] where
+template :: Blog -> FilePath -> [String] -> (String,Html) -> Html
+template blog@Blog{..} path tags (title,html) = toHtml [head,thebody] where
     head = header << [toHtml $ map style blogCSS
                      ,meta ! [httpequiv "Content-Type"
                              ,content "text/html; charset=utf-8"]
                      ,thetitle << title]
-    thebody = body << [back,hr,date,html,hr,back]
+    thebody = body << [back,hr,tagndate,html,hr,back]
     back = toHtml $ p << hotlink blogRoot << ("« Back to " ++ blogName)
     style css = thelink ! [rel "stylesheet",href (blogRoot++"/"++css)]
                 << noHtml
-    date = makeDate blog path
+    tagndate = p << (small << (date +++ ", " +++ tag))
+    date = "Date: " +++ makeDate blog path
+    tag = "Tags: " +++ (mconcat $ intersperse (toHtml ", ") taglinks)
+    taglinks = map mkLink tags where
+        mkLink tag = toHtml $ hotlink (blogRoot++"/tags/"++tag++".html") 
+                     << tag
 
 makeDate :: Blog -> FilePath -> Html
 makeDate Blog{..} path = 
