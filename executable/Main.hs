@@ -32,3 +32,4 @@ getConf filePath = runErrorT $ do
        <*> return False
        <*> get "date"
        <*> return "tags"
+       <*> get "url"
