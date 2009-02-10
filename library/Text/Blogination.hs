@@ -17,12 +17,14 @@ import Control.Monad.Error
 import Data.Char hiding (Space)
 import Data.List.Higher
 import Data.Maybe
+import Prelude hiding (readFile,writeFile)
 import Text.Highlighting.Kate
 import Text.Pandoc
 import Text.Printf
 import Text.XHtml.Strict
 import System.Directory
 import System.FilePath
+import System.IO.UTF8 (readFile,writeFile)
 import System.Time
 
 data Blog = Blog
