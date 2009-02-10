@@ -13,7 +13,7 @@ build-type:          Simple
 Data-Files: sample-blog.conf
 
 library
-  build-depends: base,filepath,directory,pandoc,xhtml,highlighting-kate,higherorder,mtl,utf8-string
+  build-depends: base,filepath,directory,pandoc,xhtml,highlighting-kate,higherorder,mtl,utf8-string,old-locale,regex-compat,time
   exposed-modules: Text.Blogination
   hs-source-dirs: library/
 

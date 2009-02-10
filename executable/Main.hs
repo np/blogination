@@ -2,7 +2,9 @@
 import Control.Applicative
 import Control.Monad
 import Control.Monad.Error
+import Prelude hiding (readFile,writeFile)
 import System
+import System.IO.UTF8 (readFile,writeFile)
 import Text.Blogination
 import qualified Data.ConfigFile as C
 
@@ -21,9 +23,11 @@ instance Monad m => Applicative (ErrorT C.CPError m) where
 
 getConf :: FilePath -> IO (Either (C.CPErrorData,String) Blog)
 getConf filePath = runErrorT $ do
-  config <- join $ liftIO $ C.readfile C.emptyCP filePath
+  contents <- liftIO $ readFile filePath
+  config <- C.readstring C.emptyCP contents
   let get = C.get config "BLOG"
   Blog <$> get "name" <*> get "root"
        <*> (read <$> get "css") <*> get "entries" <*> get "html"
        <*> get "author"
        <*> (return False)
+       <*> get "date"

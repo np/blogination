@@ -17,6 +17,8 @@ import Control.Monad.Error
 import Data.Char hiding (Space)
 import Data.List.Higher
 import Data.Maybe
+import Data.Time.Format
+import Data.Time.Clock
 import Prelude hiding (readFile,writeFile)
 import Text.Highlighting.Kate
 import Text.Pandoc
@@ -26,6 +28,7 @@ import System.Directory
 import System.FilePath
 import System.IO.UTF8 (readFile,writeFile)
 import System.Time
+import System.Locale
 
 data Blog = Blog
     { blogName     :: String -- e.g. Chris Done's Blog
@@ -35,6 +38,8 @@ data Blog = Blog
     , blogHtml     :: FilePath
     , blogAuthor   :: String
     , blogForce    :: Bool
+    , blogDate     :: String -- date format e.g. 
+                             -- "%A %d %b, %Y" makes "Tuesday 10 Feb, 2009"
     } deriving (Read,Show)
 
 type Blogination = ErrorT String (StateT Blog IO)
@@ -94,7 +99,8 @@ renderEntry path = do
   blog@Blog{..} <- lift get
   liftIO $ do
     contents <- readFile (blogEntries</>path)
-    writeFile (blogHtml</>path++".html") $ showHtml $ pageToHtml blog contents
+    writeFile (blogHtml</>path++".html") $ 
+       showHtml $ pageToHtml blog path contents
 
 getEntryNames :: Blogination [FilePath]
 getEntryNames = do
@@ -112,22 +118,35 @@ ensureProperState = do
     return ()
   liftIO $ createDirectoryIfMissing False blogHtml
 
-pageToHtml :: Blog -> String -> Html
-pageToHtml blog = html . second write . (getTitle &&& highlight) . read where
+pageToHtml :: Blog -> FilePath -> String -> Html
+pageToHtml blog fname = 
+    html . second write . (getTitle &&& highlight) . read where
     read = readMarkdown defaultParserState
     write = writeHtml defaultWriterOptions
-    html = template blog
+    html = template blog fname
 
-template :: Blog -> (String,Html) -> Html
-template Blog{..} (title,html) = toHtml [head,thebody] where
+template :: Blog -> FilePath -> (String,Html) -> Html
+template blog@Blog{..} path (title,html) = toHtml [head,thebody] where
     head = header << [toHtml $ map style blogCSS
                      ,meta ! [httpequiv "Content-Type"
                              ,content "text/html; charset=utf-8"]
                      ,thetitle << title]
-    thebody = body << [back,hr,html,hr,back]
+    thebody = body << [back,hr,date,html,hr,back]
     back = toHtml $ p << hotlink blogRoot << ("« Back to " ++ blogName)
     style css = thelink ! [rel "stylesheet",href (blogRoot++"/"++css)]
                 << noHtml
+    date = makeDate blog path
+
+makeDate :: Blog -> FilePath -> Html
+makeDate Blog{..} path = 
+    case parse (take (length "0000-00-00") path) of
+      Just date -> show date
+      Nothing -> noHtml
+    where parse :: String -> Maybe UTCTime
+          parse = parseTime l "%Y-%m-%d"
+          show :: UTCTime -> Html
+          show = toHtml . formatTime l blogDate
+          l = defaultTimeLocale
 
 getTitle :: Pandoc -> String
 getTitle (Pandoc meta blocks) = title blocks where
