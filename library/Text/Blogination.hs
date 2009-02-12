@@ -46,6 +46,7 @@ data Blog = Blog
                              -- "%A %d %b, %Y" makes "Tuesday 10 Feb, 2009"
     , blogTags     :: FilePath
     , blogURL      :: String -- e.g. "http://chrisdone.com/blog"
+    , blogAnalytics :: Maybe String -- google analytics ID e.g. UA-7443395-1
      } deriving (Read,Show)
 
 type Blogination = ErrorT String (StateT Blog IO)
@@ -106,12 +107,13 @@ renderTagHtml :: FilePath -> Blogination ()
 renderTagHtml tag = do
   blog@Blog{..} <- lift get
   links <- mapM getEntryLink =<< getTagEntryNames tag
+  anal <- analytics
   let html = [head,thebody]
       head = header << [toHtml $ map style blogCSS
                        ,encoding
                        ,thetitle << title
                        ,rss]
-      thebody = body << [back,hr,name,menu,hr,back]
+      thebody = body << [back,hr,name,menu,hr,back,anal]
       title = tag ++ " - " ++ blogName
       name = h2 << ("Tag: " ++ tag)
       menu = ulist << map ((li<<) . showLink) links
@@ -134,8 +136,9 @@ renderIndex = do
   blog@Blog{..} <- lift get
   links <- mapM getEntryLink =<< getEntryNames
   alltags <- getTags
+  anal <- analytics
   let html = toHtml [header<<[title,encoding,rss]
-                    ,body<<[name,menu,tags]]
+                    ,body<<[name,menu,tags,anal]]
       title = thetitle << blogName
       name = h1 << blogName
       menu = h2 << "Posts" +++ ul (map showLink links)
@@ -232,7 +235,8 @@ template blog@Blog{..} path tags (title,html) = toHtml [head,thebody] where
     head = header << [toHtml $ map style blogCSS
                      ,encoding
                      ,thetitle << title]
-    thebody = body << [back,hr,tagndate,html,hr,back]
+    thebody = body << [back,hr,tagndate,html,hr,back,anal]
+    anal = analyticsScript blogAnalytics
     back = toHtml $ p << hotlink blogRoot << ("« Back to " ++ blogName)
     style css = thelink ! [rel "stylesheet",href (blogRoot++css)]
                 << noHtml
@@ -241,6 +245,24 @@ template blog@Blog{..} path tags (title,html) = toHtml [head,thebody] where
     tag = "Tags: " +++ (mconcat $ intersperse (toHtml ", ") taglinks)
     taglinks = map (mkTagLink blog) tags
     showTime = toHtml . formatTime defaultTimeLocale blogDate
+
+analytics :: Blogination Html
+analytics = do
+  Blog{..} <- lift get
+  return $ analyticsScript blogAnalytics
+
+analyticsScript :: Maybe String -> Html
+analyticsScript = maybe noHtml script where
+    script blogAnalytics = primHtml $
+     "<script type=\"text/javascript\">\
+    \var gaJsHost = ((\"https:\" == document.location.protocol) ? \
+    \ \"https://ssl.\" : \"http://www.\"); \
+    \ document.write(unescape(\"%3Cscript src='\" + gaJsHost + \
+    \ \"google-analytics.com/ga.js' \
+    \ type='text/javascript'%3E%3C/script%3E\")); </script> \
+    \ <script type=\"text/javascript\"> try { \
+    \ var pageTracker = _gat._getTracker(\"" ++ blogAnalytics ++ "\"); \
+    \ pageTracker._trackPageview(); } catch(err) {}</script>"
 
 mkTagLink :: Blog -> FilePath -> Html
 mkTagLink Blog{..} tag = 

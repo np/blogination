@@ -21,15 +21,22 @@ main = do
 instance Monad m => Applicative (ErrorT C.CPError m) where
     pure = return; (<*>) = ap
 
+instance Monad m => Alternative (ErrorT C.CPError m) where
+    empty = mzero; (<|>) = mplus
+
 getConf :: FilePath -> IO (Either (C.CPErrorData,String) Blog)
 getConf filePath = runErrorT $ do
   contents <- liftIO $ readFile filePath
   config <- C.readstring C.emptyCP contents
   let get = C.get config "BLOG"
-  Blog <$> get "name" <*> get "root"
-       <*> (read <$> get "css") <*> get "entries" <*> get "html"
+  Blog <$> get "name" 
+       <*> get "root"
+       <*> (read <$> get "css") 
+       <*> get "entries" 
+       <*> get "html"
        <*> get "author"
        <*> return False
        <*> get "date"
        <*> return "tags"
        <*> get "url"
+       <*> (Just <$> get "analytics" <|> return Nothing)
