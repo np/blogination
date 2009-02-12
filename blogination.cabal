@@ -1,5 +1,5 @@
 name:                blogination
-version:             0.2
+version:             0.3
 synopsis:            Very simple static blog software
 description:         Blogination reads files written in markdown and outputs xhtml. Supports syntax highlighting. Philosophy is simplicity. Can be used as a library, in a web application for example. Intended use is a simple commandline program to run after changes are made. Ideally use darcs or git with it.
 category:            Web

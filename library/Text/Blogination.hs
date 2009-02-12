@@ -17,6 +17,8 @@ import Control.Monad.Error
 import Data.Char hiding (Space)
 import Data.List.Higher
 import Data.Maybe
+import Data.Monoid
+import Data.Ord
 import Data.Time.Format
 import Data.Time.Clock
 import Prelude hiding (readFile,writeFile)
@@ -32,7 +34,6 @@ import System.FilePath
 import System.IO.UTF8 (readFile,writeFile)
 import System.Time
 import System.Locale
-import Data.Monoid
 
 data Blog = Blog
     { blogName     :: String -- e.g. Chris Done's Blog
@@ -64,17 +65,20 @@ buildBlog = do ensureProperState
 
 renderIndexRSS :: Blogination ()
 renderIndexRSS = do
-  getEntryNames >>= renderEntriesRSS . take 5 
+  getEntryNames >>= renderEntriesRSS . take 5
                 >>= liftIO . writeFile "rss.xml"
 
 renderTags :: [FilePath] -> Blogination ()
-renderTags entries = mapM_ (renderTag entries) =<< getTags
+renderTags entries = do
+  mapM_ (renderTag entries) =<< getTags
 
 renderTag :: [FilePath] -> FilePath -> Blogination ()
 renderTag entries tag = do 
+  blog@Blog{..} <- lift get
   changedInThisTag <- (intersect entries) `fmap` getTagEntryNames tag
   when (not $ null changedInThisTag) $ do
     getTagEntryNames tag >>= renderEntriesRSS . take 5
+                         >>= liftIO . writeFile (blogTags</>tag++".xml")
     renderTagHtml tag
 
 renderEntriesRSS :: [FilePath] -> Blogination String
@@ -129,7 +133,7 @@ getTagEntryNames :: FilePath -> Blogination [FilePath]
 getTagEntryNames path = do
   blog@Blog{..} <- lift get
   names <- lines `fmap` liftIO (readFile (blogTags</>path))
-  liftIO $ fmap (reverse . sort) $ filterM (doesFileExist . (blogEntries</>)) names
+  liftIO $ fmap dateSort $ filterM (doesFileExist . (blogEntries</>)) names
 
 renderIndex :: Blogination ()
 renderIndex = do
@@ -204,7 +208,7 @@ getTags = do
 
 filterPlain = filter (all (flip any [isLetter,isSpace,isDigit] . flip ($)))
 
-fileClean = reverse . sort . filter (not . all (=='.'))
+fileClean = dateSort . filter (not . all (=='.'))
 
 ensureProperState :: Blogination ()
 ensureProperState = do
@@ -307,3 +311,6 @@ highlightWith lang code = RawHtml $ showHtml html where
 
 encoding = meta ! [httpequiv "Content-Type"
                   ,content "text/html; charset=utf-8"]
+
+dateSort :: [String] -> [String]
+dateSort = sortBy (flip $ comparing makeDate)
