@@ -298,9 +298,10 @@ highlight (Pandoc meta blocks) = Pandoc meta newblocks where
     tryHighlight other = other
 
 highlightOpts :: String -> Maybe (String,String)
-highlightOpts = langAndCode . break isSpace where
-    langAndCode ('$':lang,code) = Just (lang,drop 1 code)
-    langAndCode _               = Nothing
+highlightOpts  ('$':rest) = langAndCode $ break (=='$') $ rest where
+    langAndCode (lang,'$':code) = Just (lang,dropWhile isSpace code)
+    langAndCode _ = Nothing
+highlightOpts _ = Nothing
 
 highlightWith :: String -> String -> Block
 highlightWith lang code = RawHtml $ showHtml html where
