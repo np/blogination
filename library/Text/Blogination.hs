@@ -11,6 +11,7 @@ module Text.Blogination
     ,highlight)
     where
 
+import Control.Applicative
 import Control.Arrow hiding ((+++))
 import Control.Monad.State
 import Control.Monad.Error
@@ -82,12 +83,8 @@ renderTag entries tag = do
     renderTagHtml tag
 
 renderEntriesRSS :: [FilePath] -> Blogination String
-renderEntriesRSS names = do
-  channel <- renderToRSS names
-  let rss = RSS "2.0" [] channel []
-      xml = xmlRSS rss
-      string = showElement xml
-  return string
+renderEntriesRSS names =
+  showElement . xmlRSS . flip (RSS "2.0" []) [] <$> renderToRSS names
 
 renderToRSS :: [FilePath] -> Blogination RSSChannel
 renderToRSS names = do
