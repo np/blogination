@@ -96,13 +96,14 @@ entryToItem :: FilePath -> Blogination RSSItem
 entryToItem path = do
   blog@Blog{..} <- lift get
   let get = liftIO . readFile . (blogEntries</>)
+      item (title,content) = (nullItem title) 
+        { rssItemDescription =
+              Just $ showHtmlFragment content 
+        , rssItemPubDate = show `fmap` makeDate path 
+        , rssItemLink = Just $ blogURL ++ "/html/" ++ path ++ ".html" }
   fmap (item . (getTitle &&& (write . hideTitle)) . read) . get $ path where
     read = readMarkdown defaultParserState
     write = writeHtml defaultWriterOptions
-    item (title,content) = (nullItem title) 
-                           { rssItemDescription =
-                                 Just $ showHtmlFragment content 
-                           , rssItemPubDate = show `fmap` makeDate path }
 
 hideTitle :: Pandoc -> Pandoc
 hideTitle (Pandoc meta blocks) = Pandoc meta newblocks where
