@@ -76,7 +76,7 @@ renderTags entries = do
 renderTag :: [FilePath] -> FilePath -> Blogination ()
 renderTag entries tag = do 
   blog@Blog{..} <- lift get
-  changedInThisTag <- (intersect entries) `fmap` getTagEntryNames tag
+  changedInThisTag <- intersect entries <$> getTagEntryNames tag
   when (not $ null changedInThisTag) $ do
     getTagEntryNames tag >>= renderEntriesRSS . take 5
                          >>= liftIO . writeFile (blogTags</>tag++".xml")
@@ -96,13 +96,19 @@ entryToItem :: FilePath -> Blogination RSSItem
 entryToItem path = do
   blog@Blog{..} <- lift get
   let get = liftIO . readFile . (blogEntries</>)
-  fmap (item . (getTitle &&& write) . read) . get $ path where
+  fmap (item . (getTitle &&& (write . hideTitle)) . read) . get $ path where
     read = readMarkdown defaultParserState
     write = writeHtml defaultWriterOptions
     item (title,content) = (nullItem title) 
                            { rssItemDescription =
                                  Just $ showHtmlFragment content 
                            , rssItemPubDate = show `fmap` makeDate path }
+
+hideTitle :: Pandoc -> Pandoc
+hideTitle (Pandoc meta blocks) = Pandoc meta newblocks where
+    newblocks = case blocks of
+                  (Header 1 _:content) -> content
+                  content -> content
 
 renderTagHtml :: FilePath -> Blogination ()
 renderTagHtml tag = do
@@ -241,9 +247,9 @@ template blog@Blog{..} path tags (title,html) = toHtml [head,thebody] where
     back = toHtml $ p << hotlink blogRoot << ("« Back to " ++ blogName)
     style css = thelink ! [rel "stylesheet",href (blogRoot++css)]
                 << noHtml
-    tagndate = p << (small << (date +++ ", " +++ tag))
+    tagndate = p << (small << (date +++ tag))
     date = "Date: " +++ (maybe noHtml showTime $ makeDate path)
-    tag = "Tags: " +++ (mconcat $ intersperse (toHtml ", ") taglinks)
+    tag = list noHtml ((", Tags: " +++) . mconcat . intersperse (toHtml ", ")) taglinks
     taglinks = map (mkTagLink blog) tags
     showTime = toHtml . formatTime defaultTimeLocale blogDate
 
