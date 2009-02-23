@@ -114,7 +114,9 @@ hideTitle (Pandoc meta blocks) = Pandoc meta newblocks where
 renderTagHtml :: FilePath -> Blogination ()
 renderTagHtml tag = do
   blog@Blog{..} <- lift get
+  alltags <- getTags
   links <- mapM getEntryLink =<< getTagEntryNames tag
+  tags <- mapM (entryTags alltags) =<< getEntryNames
   anal <- analytics
   let html = [head,thebody]
       head = header << [toHtml $ map style blogCSS
@@ -124,14 +126,13 @@ renderTagHtml tag = do
       thebody = body << [back,hr,name,menu,hr,back,anal]
       title = tag ++ " - " ++ blogName
       name = h2 << ("Tag: " ++ tag)
-      menu = ulist << map ((li<<) . showLink) links
+      menu = ulist << (map ((li<<) . showLink blog) $ zip links tags)
       back = toHtml $ p << hotlink blogRoot << ("« Back to " ++ blogName)
       style css = thelink ! [rel "stylesheet",href (blogRoot++css)]
                   << noHtml
       rss = thelink ! [rel "alternate",thetype "application/rss+xml"
                       ,href $ blogRoot++"tags/"++tag++".xml"] << noHtml
   liftIO $ writeFile (blogTags</>tag++".html") $ showHtml html
-      where showLink (url,title) = hotlink url << title  
 
 getTagEntryNames :: FilePath -> Blogination [FilePath]
 getTagEntryNames path = do
@@ -142,28 +143,54 @@ getTagEntryNames path = do
 renderIndex :: Blogination ()
 renderIndex = do
   blog@Blog{..} <- lift get
-  links <- mapM getEntryLink =<< getEntryNames
+  entries <- getEntryNames
+  links <- mapM getEntryLink entries
   alltags <- getTags
+  tagEntries <- mapM getTagEntryNames alltags
+  entryTags <- mapM (entryTags alltags) entries
   anal <- analytics
-  let html = toHtml [header<<[title,encoding,rss]
+  let html = toHtml [header<<[title,encoding,rss,toHtml $ map style blogCSS]
                     ,body<<[name,menu,tags,anal]]
       title = thetitle << blogName
       name = h1 << blogName
-      menu = h2 << "Posts" +++ ul (map showLink links)
-      tags = h2 << "Tags" +++ ul (map (mkTagLink blog) alltags)
+      menu = h2 << "Posts" +++ ul (map (showLink blog) $ zip links entryTags)
+      tags = h2 << "Tags" +++ ul (map (mkTagLink blog) $ zip alltags tagEntries)
       ul l = ulist << map (li<<) l
       rss = thelink ! [rel "alternate",thetype "application/rss+xml"
                       ,href $ blogRoot++"rss.xml"] << noHtml
+      style css = thelink ! [rel "stylesheet",href (blogRoot++css)]
+                  << noHtml
   liftIO $ writeFile "index.html" $ showHtml html
-      where showLink (url,title) = hotlink url << title
 
-getEntryLink :: FilePath -> Blogination (URL,String)
+showLink :: Blog -> ((URL,String,UTCTime,ClockTime),[FilePath]) -> Html
+showLink blog@Blog{..} ((url,name,created,modified),tags) = toHtml
+    [p ! [theclass "link"] << hotlink url << name
+    ,p ! [theclass "dates"]
+     << [small << ("Created: " +++ showTime created)
+        ,toHtml ", "
+        ,small << ("Modified: " +++ showTime modified')]
+    ,p ! [theclass "tagged"]
+           << small << tag]
+    where showTime = formatTime defaultTimeLocale blogDate
+          modified' = clockToUTCTime modified
+          tag = list noHtml (("Tags: " +++) . mconcat . intersperse (toHtml ", ")) taglinks
+          taglinks = map (mkTagLink blog) $ zip tags (repeat [])
+
+clockToUTCTime :: ClockTime -> UTCTime
+clockToUTCTime = readTime l "%Y%m%d%H%M%S" 
+                 . formatCalendarTime l "%Y%m%d%H%M%S" . toUTCTime
+                     where l = defaultTimeLocale
+
+getEntryLink :: FilePath -> Blogination (URL,String,UTCTime,ClockTime)
 getEntryLink path = do
   blog@Blog{..} <- lift get
   liftIO $ do
     contents <- readFile (blogEntries</>path)
+    modified <- getModificationTime (blogEntries</>path)
     return (blogRoot++blogHtml++"/"++path++".html"
-           ,getTitle $ read $ contents)
+           ,getTitle $ read $ contents
+           ,fromMaybe undefined $ makeDate path
+           ,modified)
         where read = readMarkdown defaultParserState
 
 renderEntries :: Blogination [FilePath]
@@ -192,13 +219,17 @@ renderEntry :: FilePath -> Blogination ()
 renderEntry path = do
   blog@Blog{..} <- lift get
   alltags <- getTags
-  tagEntries <- mapM getTagEntryNames alltags
-  let tags = map fst . filter (any (==path) . snd) $ zip alltags tagEntries
+  tags <- entryTags alltags path
   liftIO $ do
     contents <- readFile (blogEntries</>path)
     writeFile (blogHtml</>path++".html") $ 
        showHtml $ pageToHtml blog path tags contents
     where match = map fst . filter (any (== path) . snd)
+
+entryTags :: [FilePath] -> FilePath -> Blogination [FilePath]
+entryTags tags path = do
+  tagEntries <- mapM getTagEntryNames tags
+  return $ map fst . filter (any (==path) . snd) $ zip tags tagEntries
 
 getEntryNames :: Blogination [FilePath]
 getEntryNames = do
@@ -251,7 +282,7 @@ template blog@Blog{..} path tags (title,html) = toHtml [head,thebody] where
     tagndate = p << (small << (date +++ tag))
     date = "Date: " +++ (maybe noHtml showTime $ makeDate path)
     tag = list noHtml ((", Tags: " +++) . mconcat . intersperse (toHtml ", ")) taglinks
-    taglinks = map (mkTagLink blog) tags
+    taglinks = map (mkTagLink blog) $ zip tags (repeat [])
     showTime = toHtml . formatTime defaultTimeLocale blogDate
 
 analytics :: Blogination Html
@@ -272,9 +303,12 @@ analyticsScript = maybe noHtml script where
     \ var pageTracker = _gat._getTracker(\"" ++ blogAnalytics ++ "\"); \
     \ pageTracker._trackPageview(); } catch(err) {}</script>"
 
-mkTagLink :: Blog -> FilePath -> Html
-mkTagLink Blog{..} tag = 
-    toHtml $ hotlink (blogRoot++"tags/"++tag++".html") << tag
+mkTagLink :: Blog -> (FilePath,[FilePath]) -> Html
+mkTagLink Blog{..} (tag,entries) = 
+    toHtml $ hotlink (blogRoot++"tags/"++tag++".html") << tag +++
+           if null entries 
+              then noHtml 
+              else toHtml $ " (" ++ show (length entries) ++ ")"
 
 makeDate :: FilePath -> Maybe UTCTime
 makeDate path = 
