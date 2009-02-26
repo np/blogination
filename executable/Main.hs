@@ -29,6 +29,7 @@ getConf filePath = runErrorT $ do
   contents <- liftIO $ readFile filePath
   config <- C.readstring C.emptyCP contents
   let get = C.get config "BLOG"
+      optional key = Just <$> get key <|> return Nothing
   Blog <$> get "name" 
        <*> get "root"
        <*> (read <$> get "css") 
@@ -39,4 +40,6 @@ getConf filePath = runErrorT $ do
        <*> get "date"
        <*> return "tags"
        <*> get "url"
-       <*> (Just <$> get "analytics" <|> return Nothing)
+       <*> optional "analytics"
+       <*> optional "home"
+       <*> optional "home-name"

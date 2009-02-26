@@ -47,8 +47,10 @@ data Blog = Blog
     , blogDate     :: String -- date format e.g. 
                              -- "%A %d %b, %Y" makes "Tuesday 10 Feb, 2009"
     , blogTags     :: FilePath
-    , blogURL      :: String -- e.g. "http://chrisdone.com/blog"
+    , blogURL      :: URL -- e.g. "http://chrisdone.com/blog"
     , blogAnalytics :: Maybe String -- google analytics ID e.g. UA-7443395-1
+    , blogHome     :: Maybe URL -- home page e.g. "http://chrisdone.com/"
+    , blogHomeName :: Maybe String -- home page e.g. Chris Done's Home Page
      } deriving (Read,Show)
 
 type Blogination = ErrorT String (StateT Blog IO)
@@ -150,7 +152,7 @@ renderIndex = do
   entryTags <- mapM (entryTags alltags) entries
   anal <- analytics
   let html = toHtml [header<<[title,encoding,rss,toHtml $ map style blogCSS]
-                    ,body<<[name,menu,tags,anal]]
+                    ,body<<[back,hr,name,menu,tags,hr,back,anal]]
       title = thetitle << blogName
       name = h1 << blogName
       menu = h2 << "Posts" +++ ul (map (showLink blog) $ zip links entryTags)
@@ -160,6 +162,10 @@ renderIndex = do
                       ,href $ blogRoot++"rss.xml"] << noHtml
       style css = thelink ! [rel "stylesheet",href (blogRoot++css)]
                   << noHtml
+      back = fromMaybe noHtml $ do
+                url <- blogHome
+                name <- blogHomeName
+                return $ p << hotlink url << ("« Back to " ++ name)
   liftIO $ writeFile "index.html" $ showHtml html
 
 showLink :: Blog -> ((URL,String,UTCTime,ClockTime),[FilePath]) -> Html
