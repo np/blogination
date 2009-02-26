@@ -342,7 +342,7 @@ highlightOpts  ('$':rest) = langAndCode $ break (=='$') $ rest where
 highlightOpts _ = Nothing
 
 highlightWith :: String -> String -> Block
-highlightWith lang code = RawHtml $ showHtml html where
+highlightWith lang code = RawHtml $ showHtmlFragment html where
     html = either (const def) format highlight
     format = formatAsXHtml [] lang
     highlight = highlightAs lang code
