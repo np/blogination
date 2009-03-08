@@ -120,21 +120,14 @@ renderTagHtml tag = do
   alltags <- getTags
   links <- mapM getEntryLink tagEntries
   tags <- mapM (entryTags alltags) tagEntries
-  anal <- analytics
-  let html = [head,thebody]
-      head = header << [toHtml $ map style blogCSS
-                       ,encoding
-                       ,thetitle << title
-                       ,rss]
-      thebody = body << [back,hr,name,menu,hr,back,anal]
+  let html = htmlTemplate blog theheader (back +++ hr) (hr +++ back) thecontent "tag"
+      theheader = toHtml [thetitle << title
+                         ,rss $ blogRoot++"tags/"++tag++".xml"]
+      thecontent = name +++ menu
       title = tag ++ " - " ++ blogName
       name = h2 << ("Tag: " ++ tag)
       menu = ulist << (map ((li<<) . showLink blog) $ zip links tags)
-      back = toHtml $ p << hotlink blogRoot << ("« Back to " ++ blogName)
-      style css = thelink ! [rel "stylesheet",href (blogRoot++css)]
-                  << noHtml
-      rss = thelink ! [rel "alternate",thetype "application/rss+xml"
-                      ,href $ blogRoot++"tags/"++tag++".xml"] << noHtml
+      back = backlink blogRoot blogName
   liftIO $ writeFile (blogTags</>tag++".html") $ showHtml html
 
 getTagEntryNames :: FilePath -> Blogination [FilePath]
@@ -151,22 +144,20 @@ renderIndex = do
   alltags <- getTags
   tagEntries <- mapM getTagEntryNames alltags
   entryTags <- mapM (entryTags alltags) entries
-  anal <- analytics
-  let html = toHtml [header<<[title,encoding,rss,toHtml $ map style blogCSS]
-                    ,body<<[back,hr,name,menu,tags,hr,back,anal]]
-      title = thetitle << blogName
+  let html = htmlTemplate blog theheader (back +++ hr) (hr +++ back) thecontent "index"
+      theheader = toHtml [thetitle << blogName
+                         ,rss $ blogRoot++"rss.xml"]
+      thecontent = name +++ menu +++ tags
       name = h1 << blogName
-      menu = h2 << "Posts" +++ ul (map (showLink blog) $ zip links entryTags)
-      tags = h2 << "Tags" +++ ul (map (mkTagLink blog) $ zip alltags tagEntries)
+      menu = thediv ! [theclass "indexposts"]
+             << (h2 << "Posts" +++ ul (map (showLink blog) $ zip links entryTags))
+      tags = thediv ! [theclass "indextags"]
+             << (h2 << "Tags" +++ ul (map (mkTagLink blog) $ zip alltags tagEntries))
       ul l = ulist << map (li<<) l
-      rss = thelink ! [rel "alternate",thetype "application/rss+xml"
-                      ,href $ blogRoot++"rss.xml"] << noHtml
-      style css = thelink ! [rel "stylesheet",href (blogRoot++css)]
-                  << noHtml
       back = fromMaybe noHtml $ do
                 url <- blogHome
                 name <- blogHomeName
-                return $ p << hotlink url << ("« Back to " ++ name)
+                return $ backlink url name
   liftIO $ writeFile "index.html" $ showHtml html
 
 showLink :: Blog -> ((URL,String,UTCTime,ClockTime),[FilePath]) -> Html
@@ -277,16 +268,12 @@ pageToHtml blog fname tags =
     html = template blog fname tags
 
 template :: Blog -> FilePath -> [String] -> (String,Html) -> Html
-template blog@Blog{..} path tags (title,html) = toHtml [head,thebody] where
-    head = header << [toHtml $ map style blogCSS
-                     ,encoding
-                     ,thetitle << title]
-    thebody = body << [back,hr,tagndate,html,hr,back,anal]
-    anal = analyticsScript blogAnalytics
-    back = toHtml $ p << hotlink blogRoot << ("« Back to " ++ blogName)
-    style css = thelink ! [rel "stylesheet",href (blogRoot++css)]
-                << noHtml
-    tagndate = p << (small << (date +++ tag))
+template blog@Blog{..} path tags (title,html) =
+    htmlTemplate blog theheader (back +++ hr) (hr +++ back) thecontent "post" where
+    theheader = thetitle << title
+    thecontent = tagndate +++ html
+    back = backlink blogRoot blogName
+    tagndate = p ! [theclass "tagndate"] << (small << (date +++ tag))
     date = "Date: " +++ (maybe noHtml showTime $ makeDate path)
     tag = list noHtml ((", Tags: " +++) . mconcat . intersperse (toHtml ", ")) taglinks
     taglinks = map (mkTagLink blog) $ zip tags (repeat [])
@@ -312,10 +299,11 @@ analyticsScript = maybe noHtml script where
 
 mkTagLink :: Blog -> (FilePath,[FilePath]) -> Html
 mkTagLink Blog{..} (tag,entries) = 
-    toHtml $ hotlink (blogRoot++"tags/"++tag++".html") << tag +++
-           if null entries 
-              then noHtml 
-              else toHtml $ " (" ++ show (length entries) ++ ")"
+    toHtml $ tagLink ! [theclass "taglink"] where
+    tagLink = hotlink (blogRoot++"tags/"++tag++".html") << tag +++
+                      if null entries
+                         then noHtml
+                         else toHtml $ " (" ++ show (length entries) ++ ")"
 
 makeDate :: FilePath -> Maybe UTCTime
 makeDate path = 
@@ -354,6 +342,25 @@ highlightWith lang code = RawHtml $ showHtmlFragment html where
     format = formatAsXHtml [] lang
     highlight = highlightAs lang code
     def = pre << code
+
+htmlTemplate :: Blog -> Html -> Html -> Html -> Html -> String -> Html
+htmlTemplate blog@Blog{..} head bhead bfoot bcont bcclass = toHtml [theheader,thebody] where
+    theheader = header << [toHtml $ map style $ blogCSS
+                          ,encoding
+                          ,head]
+    thebody = body << [thebodyheader, thebodycontent, thebodyfooter, anal]
+    thebodyheader  = thediv ! [theclass "header"] << bhead
+    thebodycontent = thediv ! [theclass bcclass] << bcont
+    thebodyfooter  = thediv ! [theclass "footer"] << bfoot
+    anal = analyticsScript blogAnalytics
+    style css = thelink ! [rel "stylesheet",thetype "text/css"
+                          ,href (blogRoot++css)] << noHtml
+
+rss path = thelink ! [rel "alternate",thetype "application/rss+xml"
+                     ,href path] << noHtml
+
+backlink path name = toHtml $ p ! [theclass "backto"]
+                              << hotlink path << ("« Back to " ++ name)
 
 encoding = meta ! [httpequiv "Content-Type"
                   ,content "text/html; charset=utf-8"]
