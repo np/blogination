@@ -116,9 +116,10 @@ hideTitle (Pandoc meta blocks) = Pandoc meta newblocks where
 renderTagHtml :: FilePath -> Blogination ()
 renderTagHtml tag = do
   blog@Blog{..} <- lift get
+  tagEntries <- getTagEntryNames tag
   alltags <- getTags
-  links <- mapM getEntryLink =<< getTagEntryNames tag
-  tags <- mapM (entryTags alltags) =<< getEntryNames
+  links <- mapM getEntryLink tagEntries
+  tags <- mapM (entryTags alltags) tagEntries
   anal <- analytics
   let html = [head,thebody]
       head = header << [toHtml $ map style blogCSS
