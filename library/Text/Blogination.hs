@@ -125,7 +125,7 @@ renderTagHtml tag = do
                          ,rss $ blogRoot++"tags/"++tag++".xml"]
       thecontent = name +++ menu
       title = tag ++ " - " ++ blogName
-      name = h2 << ("Tag: " ++ tag)
+      name = h1 << ("Tag: " ++ tag)
       menu = ulist << (map ((li<<) . showLink blog) $ zip links tags)
       back = backlink blogRoot blogName
   liftIO $ writeFile (blogTags</>tag++".html") $ showHtml html
