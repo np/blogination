@@ -1,4 +1,7 @@
 {-# LANGUAGE RecordWildCards #-}
+{-# OPTIONS -fno-warn-missing-signatures
+            -fno-warn-name-shadowing
+            -fno-warn-unused-matches #-}
 module Text.Blogination 
     (Blog(..)
     ,Blogination

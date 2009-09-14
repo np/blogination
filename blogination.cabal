@@ -16,8 +16,10 @@ library
   build-depends: base,filepath,directory,pandoc,xhtml,highlighting-kate,higherorder,mtl,utf8-string,old-locale,regex-compat,time,xml,feed
   exposed-modules: Text.Blogination
   hs-source-dirs: library/
+  ghc-options: -Wall
 
 executable blogination
   build-depends: base,ConfigFile,haskell98,old-time
   main-is: Main.hs
   hs-source-dirs: . library/ executable/
+  ghc-options: -Wall
