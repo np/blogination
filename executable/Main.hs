@@ -34,7 +34,7 @@ getConf filePath = runErrorT $ do
        <*> get "root"
        <*> (read <$> get "css") 
        <*> get "entries" 
-       <*> get "html"
+       <*> get "output"
        <*> get "author"
        <*> return False
        <*> get "date"
