@@ -150,7 +150,7 @@ renderIndex = do
       thecontent = name +++ menu +++ tags
       name = h1 << blogName
       menu = thediv ! [theclass "indexposts"]
-             << (h2 << "Posts" +++ ul (map (showLink blog) $ zip links entryTags))
+             << (h2 << "Billets" +++ ul (map (showLink blog) $ zip links entryTags))
       tags = thediv ! [theclass "indextags"]
              << (h2 << "Tags" +++ ul (map (mkTagLink blog) $ zip alltags tagEntries))
       ul l = ulist << map (li<<) l
@@ -164,9 +164,9 @@ showLink :: Blog -> ((URL,String,UTCTime,ClockTime),[FilePath]) -> Html
 showLink blog@Blog{..} ((url,name,created,modified),tags) = toHtml
     [p ! [theclass "link"] << hotlink url << name
     ,p ! [theclass "dates"]
-     << [small << ("Created: " +++ showTime created)
+     << [small << ("Créé: " +++ showTime created)
         ,toHtml ", "
-        ,small << ("Modified: " +++ showTime modified')]
+        ,small << ("Modifié: " +++ showTime modified')]
     ,p ! [theclass "tagged"]
            << small << tag]
     where showTime = formatTime defaultTimeLocale blogDate
@@ -360,7 +360,7 @@ rss path = thelink ! [rel "alternate",thetype "application/rss+xml"
                      ,href path] << noHtml
 
 backlink path name = toHtml $ p ! [theclass "backto"]
-                              << hotlink path << ("« Back to " ++ name)
+                              << hotlink path << ("« Retour vers " ++ name)
 
 encoding = meta ! [httpequiv "Content-Type"
                   ,content "text/html; charset=utf-8"]
