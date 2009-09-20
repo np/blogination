@@ -169,6 +169,7 @@ showLink blog@Blog{..} ((url,name,created,modified),tags) = toHtml
         ,small << ("Modifié: " +++ showTime modified')]
     ,p ! [theclass "tagged"]
            << small << tag]
+          -- TODO: allow to use a different locale
     where showTime = formatTime defaultTimeLocale blogDate
           modified' = clockToUTCTime modified
           tag = list noHtml (("Tags: " +++) . mconcat . intersperse (toHtml ", ")) taglinks
@@ -177,6 +178,7 @@ showLink blog@Blog{..} ((url,name,created,modified),tags) = toHtml
 clockToUTCTime :: ClockTime -> UTCTime
 clockToUTCTime = readTime l "%Y%m%d%H%M%S" 
                  . formatCalendarTime l "%Y%m%d%H%M%S" . toUTCTime
+                           -- TODO: allow to use a different locale
                      where l = defaultTimeLocale
 
 getEntryLink :: FilePath -> Blogination (URL,String,UTCTime,ClockTime)
