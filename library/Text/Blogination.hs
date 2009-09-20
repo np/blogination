@@ -40,6 +40,7 @@ data Blog = Blog
     { blogName     :: String -- e.g. Chris Done's Blog
     , blogRoot     :: String -- /blog
     , blogCSS      :: [String] -- e.g. ["style.css","highlight.css"]
+    , blogJS       :: [String] -- e.g. ["prototype.js","lightbox.js"]
     , blogEntries  :: FilePath
     , blogHtml     :: FilePath
     , blogAuthor   :: String
@@ -345,8 +346,9 @@ highlightWith lang code = RawHtml $ showHtmlFragment html where
 
 htmlTemplate :: Blog -> Html -> Html -> Html -> Html -> String -> Html
 htmlTemplate blog@Blog{..} head bhead bfoot bcont bcclass = toHtml [theheader,thebody] where
-    theheader = header << [toHtml $ map style $ blogCSS
-                          ,encoding
+    theheader = header << [encoding
+                          ,toHtml . map style   $ blogCSS
+                          ,toHtml . map jscript $ blogJS
                           ,head]
     thebody = body << [thebodyheader, thebodycontent, thebodyfooter, anal]
     thebodyheader  = thediv ! [theclass "header"] << bhead
@@ -355,6 +357,8 @@ htmlTemplate blog@Blog{..} head bhead bfoot bcont bcclass = toHtml [theheader,th
     anal = analyticsScript blogAnalytics
     style css = thelink ! [rel "stylesheet",thetype "text/css"
                           ,href (blogRoot++css)] << noHtml
+    jscript js = script ! [thetype "text/javascript"
+                          ,src (blogRoot++js)] << noHtml
 
 rss path = thelink ! [rel "alternate",thetype "application/rss+xml"
                      ,href path] << noHtml
