@@ -79,7 +79,7 @@ renderTag :: [FilePath] -> FilePath -> Blogination ()
 renderTag entries tag = do 
   blog@Blog{..} <- lift get
   changedInThisTag <- intersect entries <$> getTagEntryNames tag
-  when (not $ null changedInThisTag) $ do
+  when (blogForce || (not $ null changedInThisTag)) $ do
     getTagEntryNames tag >>= renderEntriesRSS . take 5
                          >>= liftIO . writeFile (blogTags</>tag++".xml")
     renderTagHtml tag
