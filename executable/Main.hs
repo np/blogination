@@ -7,16 +7,19 @@ import System
 import System.IO.UTF8 (readFile,writeFile)
 import Text.Blogination
 import qualified Data.ConfigFile as C
+import Data.List
 
 main = do
   args <- getArgs
-  case args of
-    (conf:k) -> do 
-       conf <- getConf conf
-       case conf of
-         Left err -> error $ show err
-         Right blog -> runBloginator buildBlog blog { blogForce = not $ null k }
-    _ -> getConf "blog.conf" >>= either (error . show) (runBloginator buildBlog)
+  let confFile =
+        case delete "--force" args of
+          [conf] -> conf
+          []     -> "blog.conf"
+          _      -> error "Usage: bloginator [--force] [<blog-config>]"
+  conf <- getConf confFile
+  case conf of
+    Left err -> error $ show err
+    Right blog -> runBloginator buildBlog blog { blogForce = "--force" `elem` args }
 
 instance Monad m => Applicative (ErrorT C.CPError m) where
     pure = return; (<*>) = ap
