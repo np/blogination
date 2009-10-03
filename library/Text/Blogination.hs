@@ -134,7 +134,10 @@ getTagEntryNames :: FilePath -> Blogination [FilePath]
 getTagEntryNames path = do
   blog@Blog{..} <- lift get
   names <- lines `fmap` liftIO (readFile (blogTags</>path))
-  liftIO $ fmap dateSort $ filterM (doesFileExist . (blogEntries</>)) names
+  let check s = if_ (return s) (fail (entries_s ++ " should exists")) =<< doesFileExist entries_s
+                where entries_s = blogEntries</>s
+      if_ iftrue iffalse b = if b then iftrue else iffalse
+  liftIO $ fmap dateSort $ mapM check names
 
 renderIndex :: Blogination ()
 renderIndex = do
