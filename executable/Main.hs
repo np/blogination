@@ -33,7 +33,7 @@ getConf filePath = runErrorT $ do
   Blog <$> get "name" 
        <*> get "root"
        <*> (read <$> get "css") 
-       <*> (read <$> get "js")
+       <*> (read <$> get "js" <|> return [])
        <*> get "entries" 
        <*> get "html"
        <*> get "author"
