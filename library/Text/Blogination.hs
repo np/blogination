@@ -1,4 +1,7 @@
 {-# LANGUAGE RecordWildCards #-}
+{-# OPTIONS -fno-warn-missing-signatures
+            -fno-warn-name-shadowing
+            -fno-warn-unused-matches #-}
 module Text.Blogination 
     (Blog(..)
     ,Blogination
@@ -8,7 +11,8 @@ module Text.Blogination
     ,renderIndex
     ,renderEntries
     ,pageToHtml
-    ,highlight)
+    ,highlight
+    ,analytics)
     where
 
 import Control.Applicative
@@ -38,10 +42,11 @@ import System.Locale
 
 data Blog = Blog
     { blogName     :: String -- e.g. Chris Done's Blog
-    , blogRoot     :: String -- /blog
+    , blogRoot     :: String -- root URL: e.g. /blog
     , blogCSS      :: [String] -- e.g. ["style.css","highlight.css"]
+    , blogJS       :: [String] -- e.g. ["prototype.js","lightbox.js"]
     , blogEntries  :: FilePath
-    , blogHtml     :: FilePath
+    , blogOutput   :: FilePath
     , blogAuthor   :: String
     , blogForce    :: Bool
     , blogDate     :: String -- date format e.g. 
@@ -68,8 +73,9 @@ buildBlog = do ensureProperState
 
 renderIndexRSS :: Blogination ()
 renderIndexRSS = do
+  Blog{..} <- lift get
   getEntryNames >>= renderEntriesRSS . take 5
-                >>= liftIO . writeFile "rss.xml"
+                >>= liftIO . writeFile (blogOutput</>"rss.xml")
 
 renderTags :: [FilePath] -> Blogination ()
 renderTags entries = do
@@ -79,14 +85,14 @@ renderTag :: [FilePath] -> FilePath -> Blogination ()
 renderTag entries tag = do 
   blog@Blog{..} <- lift get
   changedInThisTag <- intersect entries <$> getTagEntryNames tag
-  when (not $ null changedInThisTag) $ do
+  when (blogForce || (not $ null changedInThisTag)) $ do
     getTagEntryNames tag >>= renderEntriesRSS . take 5
-                         >>= liftIO . writeFile (blogTags</>tag++".xml")
+                         >>= liftIO . writeFile (blogOutput</>"tags"</>tag++".xml")
     renderTagHtml tag
 
 renderEntriesRSS :: [FilePath] -> Blogination String
 renderEntriesRSS names =
-  showElement . xmlRSS . flip (RSS "2.0" []) [] <$> renderToRSS names
+  ppElement . xmlRSS . flip (RSS "2.0" []) [] <$> renderToRSS names
 
 renderToRSS :: [FilePath] -> Blogination RSSChannel
 renderToRSS names = do
@@ -102,7 +108,7 @@ entryToItem path = do
         { rssItemDescription =
               Just $ showHtmlFragment content 
         , rssItemPubDate = show `fmap` makeDate path 
-        , rssItemLink = Just $ blogURL ++ "/html/" ++ path ++ ".html" }
+        , rssItemLink = Just $ blogURL ++ "/entries/" ++ path ++ ".html" }
   fmap (item . (getTitle &&& (write . hideTitle)) . read) . get $ path where
     read = readMarkdown defaultParserState
     write = writeHtml defaultWriterOptions
@@ -128,7 +134,7 @@ renderTagHtml tag = do
       name = h1 << ("Tag: " ++ tag)
       menu = ulist << (map ((li<<) . showLink blog) $ zip links tags)
       back = backlink blogRoot blogName
-  liftIO $ writeFile (blogTags</>tag++".html") $ showHtml html
+  liftIO $ writeFile (blogOutput</>"tags"</>tag++".html") $ renderHtml html
 
 getTagEntryNames :: FilePath -> Blogination [FilePath]
 getTagEntryNames path = do
@@ -153,7 +159,7 @@ renderIndex = do
       thecontent = name +++ menu +++ tags
       name = h1 << blogName
       menu = thediv ! [theclass "indexposts"]
-             << (h2 << "Posts" +++ ul (map (showLink blog) $ zip links entryTags))
+             << (h2 << "Billets" +++ ul (map (showLink blog) $ zip links entryTags))
       tags = thediv ! [theclass "indextags"]
              << (h2 << "Tags" +++ ul (map (mkTagLink blog) $ zip alltags tagEntries))
       ul l = ulist << map (li<<) l
@@ -161,17 +167,18 @@ renderIndex = do
                 url <- blogHome
                 name <- blogHomeName
                 return $ backlink url name
-  liftIO $ writeFile "index.html" $ showHtml html
+  liftIO $ writeFile (blogOutput</>"index.html") $ renderHtml html
 
 showLink :: Blog -> ((URL,String,UTCTime,ClockTime),[FilePath]) -> Html
 showLink blog@Blog{..} ((url,name,created,modified),tags) = toHtml
     [p ! [theclass "link"] << hotlink url << name
     ,p ! [theclass "dates"]
-     << [small << ("Created: " +++ showTime created)
+     << [small << ("Créé: " +++ showTime created)
         ,toHtml ", "
-        ,small << ("Modified: " +++ showTime modified')]
+        ,small << ("Modifié: " +++ showTime modified')]
     ,p ! [theclass "tagged"]
            << small << tag]
+          -- TODO: allow to use a different locale
     where showTime = formatTime defaultTimeLocale blogDate
           modified' = clockToUTCTime modified
           tag = list noHtml (("Tags: " +++) . mconcat . intersperse (toHtml ", ")) taglinks
@@ -180,6 +187,7 @@ showLink blog@Blog{..} ((url,name,created,modified),tags) = toHtml
 clockToUTCTime :: ClockTime -> UTCTime
 clockToUTCTime = readTime l "%Y%m%d%H%M%S" 
                  . formatCalendarTime l "%Y%m%d%H%M%S" . toUTCTime
+                           -- TODO: allow to use a different locale
                      where l = defaultTimeLocale
 
 getEntryLink :: FilePath -> Blogination (URL,String,UTCTime,ClockTime)
@@ -188,11 +196,12 @@ getEntryLink path = do
   liftIO $ do
     contents <- readFile (blogEntries</>path)
     modified <- getModificationTime (blogEntries</>path)
-    return (blogRoot++blogHtml++"/"++path++".html"
+    return (blogRoot++"entries/"++path++".html"
            ,getTitle $ read $ contents
-           ,fromMaybe undefined $ makeDate path
+           ,fromMaybe err $ makeDate path
            ,modified)
         where read = readMarkdown defaultParserState
+              err  = error "Ill formatted blog entry name, the date format is YYYY-MM-DD"
 
 renderEntries :: Blogination [FilePath]
 renderEntries = do
@@ -200,7 +209,7 @@ renderEntries = do
   names <- getEntryNames
   let times dir = liftIO $ mapM (getModificationTime' . dir) names
   entryTimes <- times (blogEntries</>)
-  htmlTimes <- times ((blogHtml</>).(++".html"))
+  htmlTimes <- times ((blogOutput</>).(++".html"))
   let updated = catMaybes $ zipWith compare names $ zip entryTimes htmlTimes
       compare name (entry,html) | entry > html = Just name
                                 | otherwise    = Nothing
@@ -223,9 +232,8 @@ renderEntry path = do
   tags <- entryTags alltags path
   liftIO $ do
     contents <- readFile (blogEntries</>path)
-    writeFile (blogHtml</>path++".html") $ 
-       showHtml $ pageToHtml blog path tags contents
-    where match = map fst . filter (any (== path) . snd)
+    writeFile (blogOutput</>"entries"</>path++".html") $
+       renderHtml $ pageToHtml blog path tags contents
 
 entryTags :: [FilePath] -> FilePath -> Blogination [FilePath]
 entryTags tags path = do
@@ -235,14 +243,18 @@ entryTags tags path = do
 getEntryNames :: Blogination [FilePath]
 getEntryNames = do
   Blog{..} <- lift get
-  fileClean `fmap` liftIO (getDirectoryContents blogEntries) 
+  (fileClean . filterPlain) `fmap` liftIO (getDirectoryContents blogEntries)
 
 getTags :: Blogination [FilePath]
 getTags = do 
   Blog{..} <- lift get
   (fileClean . filterPlain) `fmap` liftIO (getDirectoryContents blogTags)
 
-filterPlain = filter (all (flip any [isLetter,isSpace,isDigit] . flip ($)))
+-- since we no longer generate files in the tags directory
+-- this filter could be more lenient, however it keeps us from temporary files
+-- of editors. And so I now use filterPlain in getEntryNames as well.
+filterPlain = filter (all (flip any [isLetter,isSpace,isSymb,isDigit] . flip ($)))
+  where isSymb = (=='-')
 
 fileClean = dateSort . filter (not . all (=='.'))
 
@@ -254,7 +266,9 @@ ensureProperState = do
     throwError $ printf "Blog entries directory \"%s\" does not exist."
                         blogEntries
     return ()
-  liftIO $ createDirectoryIfMissing False blogHtml
+  liftIO $ do createDirectoryIfMissing False blogOutput
+              createDirectoryIfMissing False (blogOutput</>"tags")
+              createDirectoryIfMissing False (blogOutput</>"entries")
   fixBlogRoot
 
 fixBlogRoot :: Blogination ()
@@ -315,7 +329,7 @@ makeDate path =
 
 getTitle :: Pandoc -> String
 getTitle (Pandoc meta blocks) = title blocks where
-    title = list "" head . catMaybes . map getHeading
+    title = list "No Title" head . catMaybes . map getHeading
     getHeading (Header 1 parts) = Just $ join $ map getPart parts
     getHeading _ = Nothing
     getPart (Str str) = str
@@ -348,8 +362,9 @@ highlightWith lang code = RawHtml $ showHtmlFragment html where
 
 htmlTemplate :: Blog -> Html -> Html -> Html -> Html -> String -> Html
 htmlTemplate blog@Blog{..} head bhead bfoot bcont bcclass = toHtml [theheader,thebody] where
-    theheader = header << [toHtml $ map style $ blogCSS
-                          ,encoding
+    theheader = header << [encoding
+                          ,toHtml . map style   $ blogCSS
+                          ,toHtml . map jscript $ blogJS
                           ,head]
     thebody = body << [thebodyheader, thebodycontent, thebodyfooter, anal]
     thebodyheader  = thediv ! [theclass "header"] << bhead
@@ -358,12 +373,14 @@ htmlTemplate blog@Blog{..} head bhead bfoot bcont bcclass = toHtml [theheader,th
     anal = analyticsScript blogAnalytics
     style css = thelink ! [rel "stylesheet",thetype "text/css"
                           ,href (blogRoot++css)] << noHtml
+    jscript js = script ! [thetype "text/javascript"
+                          ,src (blogRoot++js)] << noHtml
 
 rss path = thelink ! [rel "alternate",thetype "application/rss+xml"
                      ,href path] << noHtml
 
 backlink path name = toHtml $ p ! [theclass "backto"]
-                              << hotlink path << ("« Back to " ++ name)
+                              << hotlink path << ("« Retour vers " ++ name)
 
 encoding = meta ! [httpequiv "Content-Type"
                   ,content "text/html; charset=utf-8"]

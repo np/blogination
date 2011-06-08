@@ -1,4 +1,4 @@
-name:                blogination
+name:                blogination-fr
 version:             0.4
 synopsis:            Very simple static blog software
 description:         Blogination reads files written in markdown and outputs xhtml. Supports syntax highlighting. Philosophy is simplicity. Can be used as a library, in a web application for example. Intended use is a simple commandline program to run after changes are made. Ideally use darcs or git with it.
@@ -6,7 +6,7 @@ category:            Web
 license:             BSD3
 license-file:        LICENSE
 author:              Chris Done <chrisdone@gmail.com>
-maintainer:          chrisdone@gmail.com
+maintainer:          nicolas.pouillard@gmail.com
 build-Depends:       base
 cabal-Version:       >= 1.2
 build-type:          Simple
@@ -16,8 +16,10 @@ library
   build-depends: base,filepath,directory,pandoc,xhtml,highlighting-kate,higherorder,mtl,utf8-string,old-locale,regex-compat,time,xml,feed
   exposed-modules: Text.Blogination
   hs-source-dirs: library/
+  ghc-options: -Wall
 
-executable blogination
+executable blogination-fr
   build-depends: base,ConfigFile,haskell98,old-time
   main-is: Main.hs
   hs-source-dirs: . library/ executable/
+  ghc-options: -Wall
